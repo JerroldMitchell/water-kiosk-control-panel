@@ -923,11 +923,7 @@
                     <option value="">Loading kiosks...</option>
                 </select>
                 <select class="filter-box" id="analytics-date-select" style="min-width: 200px;" disabled>
-                    <option value="">Select a kiosk first</option>
-                </select>
-                <select class="filter-box" id="analytics-period-select" style="min-width: 200px;">
-                    <option value="all">All Data</option>
-                    <option value="single">Single Day</option>
+                    <option value="">Select a kiosk first (leave empty for all days)</option>
                 </select>
                 <button class="btn primary" id="btn-load-kiosk-analytics">Load Kiosk Data</button>
             </div>
@@ -1811,14 +1807,6 @@
             document.getElementById('analytics-kiosk-select').addEventListener('change', (e) => {
                 loadAvailableDates(e.target.value);
             });
-            document.getElementById('analytics-period-select').addEventListener('change', (e) => {
-                const kioskId = document.getElementById('analytics-kiosk-select').value;
-                if (e.target.value === 'single') {
-                    document.getElementById('analytics-date-select').disabled = !kioskId;
-                } else {
-                    document.getElementById('analytics-date-select').disabled = true;
-                }
-            });
             document.getElementById('btn-load-kiosk-analytics').addEventListener('click', loadKioskAnalyticsData);
         });
 
@@ -1902,7 +1890,6 @@
 
         function loadKioskAnalyticsData() {
             const kioskId = document.getElementById('analytics-kiosk-select').value;
-            const period = document.getElementById('analytics-period-select').value;
             const selectedDate = document.getElementById('analytics-date-select').value;
 
             if (!kioskId) {
@@ -1910,16 +1897,15 @@
                 return;
             }
 
-            if (period === 'single' && !selectedDate) {
-                alert('Please select a date for single day analysis');
-                return;
-            }
+            // Determine period based on whether a date is selected
+            const isSingleDay = selectedDate && selectedDate !== '';
+            const period = isSingleDay ? 'single' : 'all';
 
             document.getElementById('analytics-status').textContent = 'Loading kiosk data...';
             document.getElementById('btn-load-kiosk-analytics').disabled = true;
 
             let url = `${ANALYTICS_API}/api/analytics/kiosk/${kioskId}`;
-            if (period === 'single') {
+            if (isSingleDay) {
                 url += `?date=${selectedDate}`;
             } else {
                 url += `?date=all`;
@@ -1930,7 +1916,7 @@
                 .then(data => {
                     updateKioskMetrics(data.summary);
 
-                    if (period === 'single') {
+                    if (isSingleDay) {
                         createTopUsersByVolumeChartFromTransactions(data.transactions);
                         createTopUsersByFrequencyChartFromTransactions(data.transactions);
                         createVolumeDistributionChartFromTransactions(data.transactions);
@@ -1942,8 +1928,9 @@
                         createClientActivityChartFromDaily(data.daily);
                     }
 
-                    document.getElementById('analytics-status').textContent = `Loaded data for kiosk ${kioskId}`;
-                    document.getElementById('analytics-footer').textContent = `Displaying ${period === 'all' ? 'all' : 'single day'} data for kiosk ${kioskId}`;
+                    const dateDisplay = isSingleDay ? `${selectedDate}` : 'all days';
+                    document.getElementById('analytics-status').textContent = `Loaded ${dateDisplay} data for kiosk ${kioskId}`;
+                    document.getElementById('analytics-footer').textContent = `Displaying ${dateDisplay} data for kiosk ${kioskId}`;
                     document.getElementById('btn-load-kiosk-analytics').disabled = false;
                 })
                 .catch(error => {
