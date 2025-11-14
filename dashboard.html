@@ -1966,7 +1966,7 @@
             document.getElementById('metric-transactions').textContent = summary.total_transactions.toLocaleString();
             document.getElementById('metric-transactions-detail').textContent = `Unique users: ${summary.unique_users}`;
             const avgVolume = summary.total_transactions > 0 ? summary.total_volume_ml / summary.total_transactions : 0;
-            document.getElementById('metric-avg-volume').textContent = Math.round(avgVolume / 1000) + ' L';
+            document.getElementById('metric-avg-volume').textContent = (avgVolume / 1000).toFixed(2) + ' L';
             document.getElementById('metric-total-volume').textContent = `Total: ${(summary.total_volume_ml / 1000).toFixed(1)} L`;
             const successRate = summary.total_transactions > 0 ? (summary.pass_count / summary.total_transactions * 100) : 0;
             document.getElementById('metric-success-rate').textContent = successRate.toFixed(1) + '%';
@@ -2096,10 +2096,13 @@
                 return parseInt(a[0]) - parseInt(b[0]);
             });
 
-            const labels = sortedBuckets.map(b => b[0]);
-            const data = sortedBuckets.map(b => b[1]);
+            // Convert to object format expected by createVolumeDistributionChart
+            const distributionData = {};
+            sortedBuckets.forEach(([label, count]) => {
+                distributionData[label] = count;
+            });
 
-            createVolumeDistributionChart({ labels, data });
+            createVolumeDistributionChart(distributionData);
         }
 
         function createVolumeDistributionChartFromDaily(dailyData) {
@@ -2123,10 +2126,13 @@
                 return parseInt(a[0]) - parseInt(b[0]);
             });
 
-            const labels = sortedBuckets.map(b => b[0]);
-            const data = sortedBuckets.map(b => b[1]);
+            // Convert to object format expected by createVolumeDistributionChart
+            const distributionData = {};
+            sortedBuckets.forEach(([label, count]) => {
+                distributionData[label] = count;
+            });
 
-            createVolumeDistributionChart({ labels, data });
+            createVolumeDistributionChart(distributionData);
         }
 
         function createClientActivityChartFromDaily(dailyData) {
