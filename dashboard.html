@@ -915,14 +915,21 @@
             </div>
         </div>
 
-        <!-- File Selector -->
+        <!-- Kiosk & Date Selection -->
         <div class="section">
-            <h2>Data Source Selection</h2>
+            <h2>Individual Kiosk Analysis</h2>
             <div class="kiosk-controls">
-                <select class="filter-box" id="analytics-file-select" style="min-width: 300px;">
-                    <option value="">Loading CSV files...</option>
+                <select class="filter-box" id="analytics-kiosk-select" style="min-width: 200px;">
+                    <option value="">Loading kiosks...</option>
                 </select>
-                <button class="btn primary" id="btn-load-analytics">Load Analytics</button>
+                <select class="filter-box" id="analytics-date-select" style="min-width: 200px;" disabled>
+                    <option value="">Select a kiosk first</option>
+                </select>
+                <select class="filter-box" id="analytics-period-select" style="min-width: 200px;">
+                    <option value="all">All Data</option>
+                    <option value="single">Single Day</option>
+                </select>
+                <button class="btn primary" id="btn-load-kiosk-analytics">Load Kiosk Data</button>
             </div>
             <div id="analytics-status" style="font-size: 12px; color: #888; margin-top: 10px;"></div>
         </div>
@@ -1799,72 +1806,148 @@
             setInterval(updateTimestamp, 60000);
 
             // Analytics tab initialization
-            loadAvailableFiles();
+            loadAvailableKiosks();
             loadDailyTrends();  // Load daily trends on page load
-            document.getElementById('btn-load-analytics').addEventListener('click', loadAnalyticsData);
+            document.getElementById('analytics-kiosk-select').addEventListener('change', (e) => {
+                loadAvailableDates(e.target.value);
+            });
+            document.getElementById('analytics-period-select').addEventListener('change', (e) => {
+                const kioskId = document.getElementById('analytics-kiosk-select').value;
+                if (e.target.value === 'single') {
+                    document.getElementById('analytics-date-select').disabled = !kioskId;
+                } else {
+                    document.getElementById('analytics-date-select').disabled = true;
+                }
+            });
+            document.getElementById('btn-load-kiosk-analytics').addEventListener('click', loadKioskAnalyticsData);
         });
 
         // Analytics Functions
         let chartInstances = {};
+        const ANALYTICS_API = 'http://localhost:8082';
 
-        function loadAvailableFiles() {
-            fetch('http://localhost:5000/api/analytics/files')
+        function loadAvailableKiosks() {
+            fetch(`${ANALYTICS_API}/api/analytics/kiosks`)
                 .then(response => response.json())
-                .then(files => {
-                    const select = document.getElementById('analytics-file-select');
+                .then(data => {
+                    const select = document.getElementById('analytics-kiosk-select');
                     select.innerHTML = '';
 
-                    if (files.length === 0) {
-                        select.innerHTML = '<option value="">No CSV files found</option>';
-                        document.getElementById('analytics-status').textContent = 'No transaction files found in directory';
+                    if (!data.kiosks || data.kiosks.length === 0) {
+                        select.innerHTML = '<option value="">No kiosks found</option>';
+                        document.getElementById('analytics-status').textContent = 'No kiosks found';
                         return;
                     }
 
-                    files.forEach(file => {
-                        const option = document.createElement('option');
-                        option.value = file.name;
-                        option.textContent = `${file.name} (${file.size} bytes, modified: ${file.modified})`;
-                        select.appendChild(option);
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'Select a kiosk...';
+                    select.appendChild(option);
+
+                    data.kiosks.forEach(kiosk => {
+                        const opt = document.createElement('option');
+                        opt.value = kiosk.id;
+                        opt.textContent = `${kiosk.name} (${kiosk.id})`;
+                        select.appendChild(opt);
                     });
 
-                    if (files.length > 0) {
-                        select.value = files[0].name;
-                        document.getElementById('analytics-status').textContent = `Found ${files.length} CSV file(s)`;
-                    }
+                    document.getElementById('analytics-status').textContent = `Found ${data.kiosks.length} kiosk(s)`;
                 })
                 .catch(error => {
-                    console.error('Error loading files:', error);
-                    document.getElementById('analytics-status').textContent = 'Error loading files';
+                    console.error('Error loading kiosks:', error);
+                    document.getElementById('analytics-status').textContent = 'Error loading kiosks';
                 });
         }
 
-        function loadAnalyticsData() {
-            const fileName = document.getElementById('analytics-file-select').value;
-            if (!fileName) {
-                alert('Please select a CSV file');
+        function loadAvailableDates(kioskId) {
+            if (!kioskId) {
+                document.getElementById('analytics-date-select').disabled = true;
+                document.getElementById('analytics-date-select').innerHTML = '<option value="">Select a kiosk first</option>';
                 return;
             }
 
-            document.getElementById('analytics-status').textContent = 'Loading analytics...';
-            document.getElementById('btn-load-analytics').disabled = true;
-
-            fetch(`http://localhost:5000/api/analytics/analyze?files=${encodeURIComponent(fileName)}`)
+            fetch(`${ANALYTICS_API}/api/analytics/kiosk/${kioskId}/dates`)
                 .then(response => response.json())
                 .then(data => {
-                    updateMetrics(data.summary);
-                    createTopUsersByVolumeChart(data.top_users_by_volume);
-                    createTopUsersByFrequencyChart(data.top_users_by_frequency);
-                    createVolumeDistributionChart(data.volume_distribution);
-                    createKioskActivityChart(data.kiosk_activity);
+                    const select = document.getElementById('analytics-date-select');
+                    select.innerHTML = '';
+                    select.disabled = false;
 
-                    document.getElementById('analytics-status').textContent = `Loaded: ${data.files_processed.join(', ')}`;
-                    document.getElementById('analytics-footer').textContent = `Data loaded from: ${data.files_processed.join(', ')}`;
-                    document.getElementById('btn-load-analytics').disabled = false;
+                    if (!data.dates || data.dates.length === 0) {
+                        select.innerHTML = '<option value="">No dates found</option>';
+                        select.disabled = true;
+                        return;
+                    }
+
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'Select a date...';
+                    select.appendChild(option);
+
+                    data.dates.forEach(date => {
+                        const opt = document.createElement('option');
+                        opt.value = date;
+                        opt.textContent = date;
+                        select.appendChild(opt);
+                    });
+
+                    document.getElementById('analytics-status').textContent = `Found ${data.dates.length} date(s) for kiosk ${kioskId}`;
                 })
                 .catch(error => {
-                    console.error('Error loading analytics:', error);
-                    document.getElementById('analytics-status').textContent = 'Error loading analytics data';
-                    document.getElementById('btn-load-analytics').disabled = false;
+                    console.error('Error loading dates:', error);
+                    document.getElementById('analytics-status').textContent = 'Error loading dates';
+                    document.getElementById('analytics-date-select').disabled = true;
+                });
+        }
+
+        function loadKioskAnalyticsData() {
+            const kioskId = document.getElementById('analytics-kiosk-select').value;
+            const period = document.getElementById('analytics-period-select').value;
+            const selectedDate = document.getElementById('analytics-date-select').value;
+
+            if (!kioskId) {
+                alert('Please select a kiosk');
+                return;
+            }
+
+            if (period === 'single' && !selectedDate) {
+                alert('Please select a date for single day analysis');
+                return;
+            }
+
+            document.getElementById('analytics-status').textContent = 'Loading kiosk data...';
+            document.getElementById('btn-load-kiosk-analytics').disabled = true;
+
+            let url = `${ANALYTICS_API}/api/analytics/kiosk/${kioskId}`;
+            if (period === 'single') {
+                url += `?date=${selectedDate}`;
+            } else {
+                url += `?date=all`;
+            }
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    updateKioskMetrics(data.summary);
+
+                    if (period === 'single') {
+                        createTopUsersByVolumeChartFromTransactions(data.transactions);
+                        createTopUsersByFrequencyChartFromTransactions(data.transactions);
+                        createClientActivityChartFromTransactions(data.transactions);
+                    } else {
+                        createTopUsersByVolumeChartFromDaily(data.daily);
+                        createTopUsersByFrequencyChartFromDaily(data.daily);
+                        createClientActivityChartFromDaily(data.daily);
+                    }
+
+                    document.getElementById('analytics-status').textContent = `Loaded data for kiosk ${kioskId}`;
+                    document.getElementById('analytics-footer').textContent = `Displaying ${period === 'all' ? 'all' : 'single day'} data for kiosk ${kioskId}`;
+                    document.getElementById('btn-load-kiosk-analytics').disabled = false;
+                })
+                .catch(error => {
+                    console.error('Error loading kiosk analytics:', error);
+                    document.getElementById('analytics-status').textContent = 'Error loading kiosk data';
+                    document.getElementById('btn-load-kiosk-analytics').disabled = false;
                 });
         }
 
@@ -1875,6 +1958,169 @@
             document.getElementById('metric-total-volume').textContent = `Total: ${(summary.total_volume / 1000).toFixed(1)} L`;
             document.getElementById('metric-success-rate').textContent = summary.success_rate.toFixed(1) + '%';
             document.getElementById('metric-pass-fail').textContent = `Passed: ${summary.pass_count} / Failed: ${summary.fail_count}`;
+        }
+
+        function updateKioskMetrics(summary) {
+            document.getElementById('metric-transactions').textContent = summary.total_transactions.toLocaleString();
+            document.getElementById('metric-transactions-detail').textContent = `Unique users: ${summary.unique_users}`;
+            const avgVolume = summary.total_transactions > 0 ? summary.total_volume_ml / summary.total_transactions : 0;
+            document.getElementById('metric-avg-volume').textContent = Math.round(avgVolume / 1000) + ' L';
+            document.getElementById('metric-total-volume').textContent = `Total: ${(summary.total_volume_ml / 1000).toFixed(1)} L`;
+            const successRate = summary.total_transactions > 0 ? (summary.pass_count / summary.total_transactions * 100) : 0;
+            document.getElementById('metric-success-rate').textContent = successRate.toFixed(1) + '%';
+            document.getElementById('metric-pass-fail').textContent = `Passed: ${summary.pass_count} / Failed: ${summary.fail_count}`;
+        }
+
+        function createTopUsersByVolumeChartFromTransactions(transactions) {
+            // Aggregate volume by user_id from transactions
+            const userVolumes = {};
+            transactions.forEach(t => {
+                if (!userVolumes[t.user_id]) {
+                    userVolumes[t.user_id] = 0;
+                }
+                userVolumes[t.user_id] += t.volume_ml;
+            });
+
+            // Sort and get top 20
+            const sorted = Object.entries(userVolumes)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 20);
+
+            const labels = sorted.map(d => d[0]);
+            const data = sorted.map(d => d[1]);
+
+            createTopUsersByVolumeChart({ labels, data });
+        }
+
+        function createTopUsersByFrequencyChartFromTransactions(transactions) {
+            // Count transactions by user_id
+            const userCounts = {};
+            transactions.forEach(t => {
+                if (!userCounts[t.user_id]) {
+                    userCounts[t.user_id] = 0;
+                }
+                userCounts[t.user_id]++;
+            });
+
+            // Sort and get top 20
+            const sorted = Object.entries(userCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 20);
+
+            const labels = sorted.map(d => d[0]);
+            const data = sorted.map(d => d[1]);
+
+            createTopUsersByFrequencyChart({ labels, data });
+        }
+
+        function createClientActivityChartFromTransactions(transactions) {
+            // Count transactions by client
+            const clientCounts = {};
+            transactions.forEach(t => {
+                if (!clientCounts[t.client]) {
+                    clientCounts[t.client] = 0;
+                }
+                clientCounts[t.client]++;
+            });
+
+            const labels = Object.keys(clientCounts);
+            const data = Object.values(clientCounts);
+
+            createKioskActivityChart({ labels, data });
+        }
+
+        function createTopUsersByVolumeChartFromDaily(dailyData) {
+            // Aggregate volume from all daily records
+            const userVolumes = {};
+            dailyData.forEach(day => {
+                Object.entries(day.user_volumes || {}).forEach(([userId, volume]) => {
+                    if (!userVolumes[userId]) {
+                        userVolumes[userId] = 0;
+                    }
+                    userVolumes[userId] += volume;
+                });
+            });
+
+            // Sort and get top 20
+            const sorted = Object.entries(userVolumes)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 20);
+
+            const labels = sorted.map(d => d[0]);
+            const data = sorted.map(d => d[1]);
+
+            createTopUsersByVolumeChart({ labels, data });
+        }
+
+        function createTopUsersByFrequencyChartFromDaily(dailyData) {
+            // Count transactions from all daily records
+            const userCounts = {};
+            dailyData.forEach(day => {
+                Object.entries(day.user_access_count || {}).forEach(([userId, count]) => {
+                    if (!userCounts[userId]) {
+                        userCounts[userId] = 0;
+                    }
+                    userCounts[userId] += count;
+                });
+            });
+
+            // Sort and get top 20
+            const sorted = Object.entries(userCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 20);
+
+            const labels = sorted.map(d => d[0]);
+            const data = sorted.map(d => d[1]);
+
+            createTopUsersByFrequencyChart({ labels, data });
+        }
+
+        function createClientActivityChartFromDaily(dailyData) {
+            // For daily data, we'll show transaction counts per day as a proxy for activity
+            // This is a simplified view since client names aren't aggregated in daily data
+            const ctx = document.getElementById('chart-kiosk-activity').getContext('2d');
+
+            if (chartInstances.clientActivityChart) {
+                chartInstances.clientActivityChart.destroy();
+            }
+
+            const labels = dailyData.map(d => d.date);
+            const data = dailyData.map(d => d.transactions);
+
+            chartInstances.clientActivityChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels.slice(-10),  // Show last 10 days
+                    datasets: [{
+                        label: 'Transaction Count',
+                        data: data.slice(-10),
+                        backgroundColor: '#2196f3',
+                        borderColor: '#1976d2',
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: { font: { size: 11 }, color: '#666' }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(0,0,0,0.05)' },
+                            ticks: { color: '#888' }
+                        },
+                        x: {
+                            grid: { color: 'rgba(0,0,0,0.05)' },
+                            ticks: { color: '#888', font: { size: 10 } }
+                        }
+                    }
+                }
+            });
         }
 
         function createTopUsersByVolumeChart(data) {
@@ -2047,23 +2293,38 @@
 
         // Daily Trends Functions
         function loadDailyTrends() {
-            fetch('http://localhost:5000/api/analytics/daily-trends')
+            fetch(`${ANALYTICS_API}/api/analytics/aggregated`)
                 .then(response => response.json())
                 .then(data => {
-                    createDailyVolumeChart(data);
-                    createDailyTransactionsChart(data);
-                })
-                .catch(error => {
-                    console.error('Error loading trends:', error);
-                });
+                    // Process daily data for line charts
+                    const dates = data.daily.map(d => d.date);
+                    const volumes = data.daily.map(d => d.total_volume_ml);
+                    const transactions = data.daily.map(d => d.total_transactions);
 
-            fetch('http://localhost:5000/api/analytics/weekday-trends')
-                .then(response => response.json())
-                .then(data => {
-                    createWeekdayTrendsChart(data);
+                    createDailyVolumeChart({
+                        display_dates: dates,
+                        volumes: volumes
+                    });
+
+                    createDailyTransactionsChart({
+                        display_dates: dates,
+                        transactions: transactions
+                    });
+
+                    // Process weekday data
+                    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                    const weekdayVolumes = dayNames.map(day => {
+                        return data.by_day_of_week[day] ? data.by_day_of_week[day].total_volume_ml : 0;
+                    });
+
+                    createWeekdayTrendsChart({
+                        days: dayNames,
+                        volumes: weekdayVolumes
+                    });
                 })
                 .catch(error => {
-                    console.error('Error loading weekday trends:', error);
+                    console.error('Error loading aggregated trends:', error);
+                    document.getElementById('analytics-footer').textContent = 'Error loading aggregated data';
                 });
         }
 
