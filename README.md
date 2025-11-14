@@ -35,6 +35,74 @@ When you're done working, deactivate the virtual environment:
 deactivate
 ```
 
+## Generating Transaction Data
+
+Before running the dashboard with analytics, you must generate transaction data using the Python scripts in the `transactions/` directory.
+
+### Step 1: Generate Kiosk Users and PINs
+
+This creates 10 kiosks with randomized user databases and PIN assignments:
+
+```bash
+cd ~/workspace/cloud_server/water-kiosk-control-panel/transactions
+source ../venv/bin/activate
+python3 generate_kiosk_users.py
+```
+
+This script:
+- Creates 10 kiosks (numbered 0000-9999)
+- Generates 50-100 users per kiosk with Ugandan phone numbers (708XXXXXX format)
+- Assigns random 4-digit PINs to each user
+- Creates `kiosk_metadata.csv` and `kiosk_user_pin.csv` in each kiosk directory
+
+### Step 2: Generate Transaction Data
+
+This generates 30 days of realistic transaction data for each kiosk:
+
+```bash
+python3 generate_transactions.py
+```
+
+This script:
+- Generates 30 days of transaction history (starting from Oct 15, 2025)
+- Creates daily CSV files for each kiosk: `transactions_KIOSK_MMDDYY.csv`
+- Simulates realistic usage patterns with:
+  - 3-7 transactions per user per day (depending on user type)
+  - 98% success rate (PASS/FAIL responses)
+  - Random volume dispensing (100-600 mL per transaction)
+  - Multiple client machines per kiosk
+- Identifies ~5% of users as "abusive users" with higher daily limits
+
+### Directory Structure After Generation
+
+```
+transactions/
+├── kiosk_0001/
+│   ├── kiosk_metadata.csv          # Kiosk metadata
+│   ├── kiosk_user_pin.csv          # User database with PINs
+│   ├── transactions_0001_101525.csv # Oct 15, 2025
+│   ├── transactions_0001_101625.csv # Oct 16, 2025
+│   └── ... (30 days of data)
+├── kiosk_0002/
+│   └── ...
+└── ... (10 kiosks total)
+```
+
+### Configuration
+
+To customize data generation, edit the configuration variables at the top of each script:
+
+**generate_kiosk_users.py:**
+- `NUM_KIOSKS` - Number of kiosks to create (default: 10)
+- `MIN_USERS_PER_KIOSK` - Minimum users per kiosk (default: 50)
+- `MAX_USERS_PER_KIOSK` - Maximum users per kiosk (default: 100)
+
+**generate_transactions.py:**
+- `NUM_DAYS` - Number of days of data (default: 30)
+- `MIN_VOLUME_ML` - Minimum dispense volume (default: 100)
+- `MAX_VOLUME_ML` - Maximum dispense volume (default: 600)
+- `PASS_PERCENTAGE` - Percentage of successful transactions (default: 0.98 = 98%)
+
 ## How to View
 
 ### Quick Start (Dashboard Only)
@@ -67,7 +135,7 @@ python3 serve.py
 
 Then open: **http://localhost:8888/dashboard.html**
 
-The dashboard will be on port 8888, analytics API on port 5000. Press `Ctrl+C` to stop either server.
+The dashboard will be on port 8888, analytics API on port 8082. Press `Ctrl+C` to stop either server.
 
 ## Features
 
@@ -110,14 +178,27 @@ The dashboard will be on port 8888, analytics API on port 5000. Press `Ctrl+C` t
 
 ## Analytics Details
 
+### Requirements
+
+Before using analytics, you must:
+1. Run `generate_kiosk_users.py` to create kiosk user databases
+2. Run `generate_transactions.py` to generate transaction CSV files
+3. Run `analytics_api.py` in the virtual environment to start the backend API
+
 ### Usage
 
 1. **Open the Dashboard**: Navigate to `http://localhost:8888/dashboard.html`
 2. **Go to Analytics Tab**: Click the "Analytics" tab in the left sidebar
-3. **Select a CSV File**: The dropdown will show all available transaction CSV files
-4. **Load Analytics**: Click the "Load Analytics" button
-5. **View Visualizations**:
-   - Key metrics (transactions, users, success rate)
+3. **View Top 3 Graphs** (automatically loaded):
+   - **Total Water Dispensed Per Day** - Daily consumption across all kiosks
+   - **Total Transactions Per Day** - Daily transaction count across all kiosks
+   - **Usage by Day of Week** - Weekday vs weekend patterns
+4. **Individual Kiosk Analysis**:
+   - Select a kiosk from the dropdown
+   - (Optional) Select a specific date, or leave empty for all days
+   - Click "Load Kiosk Data"
+5. **View Kiosk Visualizations**:
+   - Key metrics (transactions, users, average volume, success rate)
    - Top users by volume (horizontal bar chart)
    - Top users by frequency (horizontal bar chart)
    - Volume distribution (histogram)
@@ -193,27 +274,49 @@ uptime_41_sec,Client 3,708890780,2876,413,PASS
 
 ## Sample Data
 
-The dashboard uses hardcoded sample data in JavaScript:
-- 10 kiosks (0001-0010): 8 online, 2 offline
-- 5 customers with various account statuses
-- 1,247 transactions yesterday
-- 2 active alerts
-- Analytics metrics with daily/monthly trends
+The analytics tab uses dynamically generated transaction data:
+- **10 Kiosks** with unique user databases
+- **50-100 users per kiosk** with Ugandan phone numbers (708XXXXXX)
+- **30 days of transaction history** (Oct 15 - Nov 13, 2025)
+- **Realistic usage patterns**:
+  - 3-7 transactions per user per day
+  - 98% success rate (2% failures)
+  - 100-600 mL per transaction
+  - Multiple clients per kiosk
+  - ~5% "abusive users" with higher consumption limits
 
-To connect to real data, replace the `sampleData` object with API calls to your Flask backend.
+Generated data is stored as CSV files in the `transactions/kiosk_XXXX/` directories.
+
+The **Dashboard** and **Users** tabs use hardcoded sample data. To connect them to real data, update the JavaScript with API calls to your backend services.
 
 ## API Integration
 
-### Analytics API
+### Analytics API (Port 8082)
 
-The analytics tab uses real API endpoints for CSV processing:
+The analytics tab uses real API endpoints for processing transaction data:
 
 ```
-GET /api/analytics/files - Get list of available CSV files
-GET /api/analytics/analyze?files=filename.csv - Analyze transaction data
-GET /api/analytics/daily-trends - Multi-day trend analysis
-GET /api/analytics/weekday-trends - Usage patterns by day of week
-GET /api/analytics/health - Health check
+GET /api/analytics/health - Health check endpoint
+GET /api/analytics/kiosks - List all available kiosks
+GET /api/analytics/kiosk/<kiosk_id>/dates - Get available dates for a kiosk
+GET /api/analytics/aggregated - All-kiosk daily and weekday aggregation (for top 3 graphs)
+GET /api/analytics/kiosk/<kiosk_id>?date=all - All data for a specific kiosk
+GET /api/analytics/kiosk/<kiosk_id>?date=YYYY-MM-DD - Single day data for a kiosk
+```
+
+**Example Usage:**
+```bash
+# Get list of all kiosks
+curl http://localhost:8082/api/analytics/kiosks
+
+# Get available dates for kiosk 0001
+curl http://localhost:8082/api/analytics/kiosk/0001/dates
+
+# Get all data for kiosk 0001
+curl http://localhost:8082/api/analytics/kiosk/0001?date=all
+
+# Get single day data (2025-10-15) for kiosk 0001
+curl http://localhost:8082/api/analytics/kiosk/0001?date=2025-10-15
 ```
 
 ### Future Integration Points
@@ -232,23 +335,34 @@ fetch('/api/system/health')
 
 ## Troubleshooting
 
-### "No CSV files found"
-- Ensure CSV files are in the same directory as `analytics_api.py` and `serve.py`
-- Files must match the pattern `transactions*.csv`
+### "No kiosks found" in Analytics
+- You must run the transaction data generation scripts first:
+  ```bash
+  cd transactions
+  python3 generate_kiosk_users.py
+  python3 generate_transactions.py
+  ```
+- Verify kiosk directories were created in `transactions/` directory
 
-### "Error loading files"
-- Check that analytics_api.py server is running on port 5000
+### "Error loading kiosks"
+- Check that analytics_api.py server is running on port 8082
+- Verify the virtual environment is activated before running analytics_api.py
 - Check browser console for detailed error messages
 
-### Charts not displaying
-- Ensure Chart.js library is loaded (CDN)
+### Charts not displaying or showing "NaN"
+- Ensure transaction data was generated successfully (run both generation scripts)
+- Verify analytics_api.py is running and accessible at http://localhost:8082/api/analytics/health
 - Check browser console for JavaScript errors
 - Try refreshing the page
 
 ### Port already in use
-If port 5000 or 8888 is already in use:
-- Edit `analytics_api.py` line 137: change `port=5000`
+If port 8082 or 8888 is already in use:
+- Edit `analytics_api.py` line 395: change `port=8082`
 - Edit `serve.py` and modify the port
+
+### Memory issues with large datasets
+- Large transaction files may consume significant memory
+- Consider reducing `NUM_DAYS` in `generate_transactions.py` if memory is limited
 
 ## Performance
 
