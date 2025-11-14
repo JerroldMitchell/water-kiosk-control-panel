@@ -254,7 +254,10 @@ def aggregate_kiosk_data(kiosk_id, period='all', date=None):
                         'transactions': data['total_transactions'],
                         'users': len(data['user_volumes']),
                         'pass_count': data['pass_count'],
-                        'fail_count': data['fail_count']
+                        'fail_count': data['fail_count'],
+                        'user_volumes': data['user_volumes'],
+                        'user_access_count': data['user_access_count'],
+                        'individual_volumes': data['individual_volumes']
                     })
 
                     summary['total_volume_ml'] += data['total_volume']
@@ -271,8 +274,8 @@ def aggregate_kiosk_data(kiosk_id, period='all', date=None):
                 'total_volume_ml': round(summary['total_volume_ml'], 2),
                 'total_transactions': summary['total_transactions'],
                 'unique_users': len(summary['unique_users']),
-                'total_pass': summary['total_pass'],
-                'total_fail': summary['total_fail']
+                'pass_count': summary['total_pass'],
+                'fail_count': summary['total_fail']
             }
         }
 

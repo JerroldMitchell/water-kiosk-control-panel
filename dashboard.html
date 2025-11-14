@@ -1933,10 +1933,12 @@
                     if (period === 'single') {
                         createTopUsersByVolumeChartFromTransactions(data.transactions);
                         createTopUsersByFrequencyChartFromTransactions(data.transactions);
+                        createVolumeDistributionChartFromTransactions(data.transactions);
                         createClientActivityChartFromTransactions(data.transactions);
                     } else {
                         createTopUsersByVolumeChartFromDaily(data.daily);
                         createTopUsersByFrequencyChartFromDaily(data.daily);
+                        createVolumeDistributionChartFromDaily(data.daily);
                         createClientActivityChartFromDaily(data.daily);
                     }
 
@@ -2033,7 +2035,8 @@
             // Aggregate volume from all daily records
             const userVolumes = {};
             dailyData.forEach(day => {
-                Object.entries(day.user_volumes || {}).forEach(([userId, volume]) => {
+                const dayUserVolumes = day.user_volumes || {};
+                Object.entries(dayUserVolumes).forEach(([userId, volume]) => {
                     if (!userVolumes[userId]) {
                         userVolumes[userId] = 0;
                     }
@@ -2056,7 +2059,8 @@
             // Count transactions from all daily records
             const userCounts = {};
             dailyData.forEach(day => {
-                Object.entries(day.user_access_count || {}).forEach(([userId, count]) => {
+                const dayUserCounts = day.user_access_count || {};
+                Object.entries(dayUserCounts).forEach(([userId, count]) => {
                     if (!userCounts[userId]) {
                         userCounts[userId] = 0;
                     }
@@ -2073,6 +2077,56 @@
             const data = sorted.map(d => d[1]);
 
             createTopUsersByFrequencyChart({ labels, data });
+        }
+
+        function createVolumeDistributionChartFromTransactions(transactions) {
+            // Create volume distribution histogram
+            const volumes = transactions.map(t => t.volume_ml);
+
+            // Define bucket ranges (0-200, 200-400, 400-600, etc.)
+            const buckets = {};
+            const bucketSize = 100;
+            volumes.forEach(volume => {
+                const bucketIndex = Math.floor(volume / bucketSize);
+                const bucketLabel = `${bucketIndex * bucketSize}-${(bucketIndex + 1) * bucketSize}`;
+                buckets[bucketLabel] = (buckets[bucketLabel] || 0) + 1;
+            });
+
+            const sortedBuckets = Object.entries(buckets).sort((a, b) => {
+                return parseInt(a[0]) - parseInt(b[0]);
+            });
+
+            const labels = sortedBuckets.map(b => b[0]);
+            const data = sortedBuckets.map(b => b[1]);
+
+            createVolumeDistributionChart({ labels, data });
+        }
+
+        function createVolumeDistributionChartFromDaily(dailyData) {
+            // Collect all individual volumes from daily data
+            const allVolumes = [];
+            dailyData.forEach(day => {
+                const dayVolumes = day.individual_volumes || [];
+                allVolumes.push(...dayVolumes);
+            });
+
+            // Create volume distribution histogram
+            const buckets = {};
+            const bucketSize = 100;
+            allVolumes.forEach(volume => {
+                const bucketIndex = Math.floor(volume / bucketSize);
+                const bucketLabel = `${bucketIndex * bucketSize}-${(bucketIndex + 1) * bucketSize}`;
+                buckets[bucketLabel] = (buckets[bucketLabel] || 0) + 1;
+            });
+
+            const sortedBuckets = Object.entries(buckets).sort((a, b) => {
+                return parseInt(a[0]) - parseInt(b[0]);
+            });
+
+            const labels = sortedBuckets.map(b => b[0]);
+            const data = sortedBuckets.map(b => b[1]);
+
+            createVolumeDistributionChart({ labels, data });
         }
 
         function createClientActivityChartFromDaily(dailyData) {
