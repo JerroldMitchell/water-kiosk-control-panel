@@ -266,16 +266,25 @@ def aggregate_kiosk_data(kiosk_id, period='all', date=None):
                     summary['total_pass'] += data['pass_count']
                     summary['total_fail'] += data['fail_count']
 
+        # Calculate averages based on number of days
+        num_days = len(daily_data)
+        avg_volume = summary['total_volume_ml'] / num_days if num_days > 0 else 0
+        avg_transactions = summary['total_transactions'] / num_days if num_days > 0 else 0
+        avg_pass = summary['total_pass'] / num_days if num_days > 0 else 0
+        avg_fail = summary['total_fail'] / num_days if num_days > 0 else 0
+
         return {
             'kiosk_id': kiosk_id,
             'period': 'all',
             'daily': daily_data,
             'summary': {
-                'total_volume_ml': round(summary['total_volume_ml'], 2),
-                'total_transactions': summary['total_transactions'],
+                'total_volume_ml': round(avg_volume, 2),
+                'total_transactions': round(avg_transactions, 2),
                 'unique_users': len(summary['unique_users']),
-                'pass_count': summary['total_pass'],
-                'fail_count': summary['total_fail']
+                'pass_count': round(avg_pass, 2),
+                'fail_count': round(avg_fail, 2),
+                'num_days': num_days,
+                'is_average': True
             }
         }
 

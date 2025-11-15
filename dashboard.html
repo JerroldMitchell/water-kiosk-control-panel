@@ -1867,11 +1867,19 @@
                         return;
                     }
 
-                    const option = document.createElement('option');
-                    option.value = '';
-                    option.textContent = 'Select a date...';
-                    select.appendChild(option);
+                    // Add "Select a date..." option
+                    const selectOption = document.createElement('option');
+                    selectOption.value = '';
+                    selectOption.textContent = 'Select a date...';
+                    select.appendChild(selectOption);
 
+                    // Add "All dates" option
+                    const allDatesOption = document.createElement('option');
+                    allDatesOption.value = 'all';
+                    allDatesOption.textContent = 'All dates';
+                    select.appendChild(allDatesOption);
+
+                    // Add individual dates
                     data.dates.forEach(date => {
                         const opt = document.createElement('option');
                         opt.value = date;
@@ -1897,9 +1905,15 @@
                 return;
             }
 
-            // Determine period based on whether a date is selected
-            const isSingleDay = selectedDate && selectedDate !== '';
-            const period = isSingleDay ? 'single' : 'all';
+            // If no date is selected (empty string), clear the analytics section
+            if (!selectedDate || selectedDate === '') {
+                clearAnalyticsCharts();
+                document.getElementById('analytics-status').textContent = 'Please select a date or "All dates"';
+                return;
+            }
+
+            // Determine if loading all dates or a single day
+            const isSingleDay = selectedDate !== 'all';
 
             document.getElementById('analytics-status').textContent = 'Loading kiosk data...';
             document.getElementById('btn-load-kiosk-analytics').disabled = true;
@@ -1928,9 +1942,9 @@
                         createClientActivityChartFromDaily(data.daily);
                     }
 
-                    const dateDisplay = isSingleDay ? `${selectedDate}` : 'all days';
-                    document.getElementById('analytics-status').textContent = `Loaded ${dateDisplay} data for kiosk ${kioskId}`;
-                    document.getElementById('analytics-footer').textContent = `Displaying ${dateDisplay} data for kiosk ${kioskId}`;
+                    const dateDisplay = isSingleDay ? `${selectedDate}` : 'average daily data';
+                    document.getElementById('analytics-status').textContent = `Loaded ${dateDisplay} for kiosk ${kioskId}`;
+                    document.getElementById('analytics-footer').textContent = `Displaying ${dateDisplay} for kiosk ${kioskId}`;
                     document.getElementById('btn-load-kiosk-analytics').disabled = false;
                 })
                 .catch(error => {
@@ -1938,6 +1952,36 @@
                     document.getElementById('analytics-status').textContent = 'Error loading kiosk data';
                     document.getElementById('btn-load-kiosk-analytics').disabled = false;
                 });
+        }
+
+        function clearAnalyticsCharts() {
+            // Clear metrics
+            document.getElementById('metric-transactions').textContent = '--';
+            document.getElementById('metric-transactions-detail').textContent = 'Unique users: --';
+            document.getElementById('metric-avg-volume').textContent = '-- mL';
+            document.getElementById('metric-total-volume').textContent = 'Total: --';
+            document.getElementById('metric-success-rate').textContent = '--%';
+            document.getElementById('metric-pass-fail').textContent = 'Passed: -- / Failed: --';
+
+            // Destroy all chart instances
+            if (chartInstances.volumeChart) {
+                chartInstances.volumeChart.destroy();
+                chartInstances.volumeChart = null;
+            }
+            if (chartInstances.frequencyChart) {
+                chartInstances.frequencyChart.destroy();
+                chartInstances.frequencyChart = null;
+            }
+            if (chartInstances.distributionChart) {
+                chartInstances.distributionChart.destroy();
+                chartInstances.distributionChart = null;
+            }
+            if (chartInstances.clientActivityChart) {
+                chartInstances.clientActivityChart.destroy();
+                chartInstances.clientActivityChart = null;
+            }
+
+            document.getElementById('analytics-footer').textContent = 'Select a date or "All dates" and click "Load Kiosk Data"';
         }
 
         function updateMetrics(summary) {
@@ -1950,14 +1994,39 @@
         }
 
         function updateKioskMetrics(summary) {
-            document.getElementById('metric-transactions').textContent = summary.total_transactions.toLocaleString();
-            document.getElementById('metric-transactions-detail').textContent = `Unique users: ${summary.unique_users}`;
+            // Check if this is average data or single day data
+            const isAverage = summary.is_average || false;
+            const prefix = isAverage ? 'Avg: ' : '';
+            const suffix = isAverage ? '/day' : '';
+
+            // Display transactions
+            const transactionsValue = isAverage ? Math.round(summary.total_transactions) : summary.total_transactions;
+            document.getElementById('metric-transactions').textContent = transactionsValue.toLocaleString() + (isAverage ? '/day' : '');
+
+            // Detail line shows unique users and number of days if average
+            let detailText = `Unique users: ${summary.unique_users}`;
+            if (isAverage && summary.num_days) {
+                detailText += ` (${summary.num_days} days)`;
+            }
+            document.getElementById('metric-transactions-detail').textContent = detailText;
+
+            // Calculate average volume per transaction
             const avgVolume = summary.total_transactions > 0 ? summary.total_volume_ml / summary.total_transactions : 0;
             document.getElementById('metric-avg-volume').textContent = (avgVolume / 1000).toFixed(2) + ' L';
-            document.getElementById('metric-total-volume').textContent = `Total: ${(summary.total_volume_ml / 1000).toFixed(1)} L`;
+
+            // Total volume label changes based on whether it's average
+            const volumeLabel = isAverage ? 'Avg/day: ' : 'Total: ';
+            document.getElementById('metric-total-volume').textContent = volumeLabel + (summary.total_volume_ml / 1000).toFixed(1) + ' L';
+
+            // Success rate
             const successRate = summary.total_transactions > 0 ? (summary.pass_count / summary.total_transactions * 100) : 0;
             document.getElementById('metric-success-rate').textContent = successRate.toFixed(1) + '%';
-            document.getElementById('metric-pass-fail').textContent = `Passed: ${summary.pass_count} / Failed: ${summary.fail_count}`;
+
+            // Pass/Fail counts
+            const passCount = isAverage ? Math.round(summary.pass_count) : summary.pass_count;
+            const failCount = isAverage ? Math.round(summary.fail_count) : summary.fail_count;
+            const passFailSuffix = isAverage ? '/day' : '';
+            document.getElementById('metric-pass-fail').textContent = `Passed: ${passCount} / Failed: ${failCount}${passFailSuffix}`;
         }
 
         function createTopUsersByVolumeChartFromTransactions(transactions) {
@@ -2031,6 +2100,12 @@
                 });
             });
 
+            // Calculate averages by dividing by number of days
+            const numDays = dailyData.length;
+            Object.keys(userVolumes).forEach(userId => {
+                userVolumes[userId] = userVolumes[userId] / numDays;
+            });
+
             // Sort and get top 20
             const sorted = Object.entries(userVolumes)
                 .sort((a, b) => b[1] - a[1])
@@ -2053,6 +2128,12 @@
                     }
                     userCounts[userId] += count;
                 });
+            });
+
+            // Calculate averages by dividing by number of days
+            const numDays = dailyData.length;
+            Object.keys(userCounts).forEach(userId => {
+                userCounts[userId] = userCounts[userId] / numDays;
             });
 
             // Sort and get top 20
@@ -2109,6 +2190,12 @@
                 buckets[bucketLabel] = (buckets[bucketLabel] || 0) + 1;
             });
 
+            // Calculate averages by dividing by number of days
+            const numDays = dailyData.length;
+            Object.keys(buckets).forEach(label => {
+                buckets[label] = buckets[label] / numDays;
+            });
+
             const sortedBuckets = Object.entries(buckets).sort((a, b) => {
                 return parseInt(a[0]) - parseInt(b[0]);
             });
@@ -2123,8 +2210,8 @@
         }
 
         function createClientActivityChartFromDaily(dailyData) {
-            // For daily data, we'll show transaction counts per day as a proxy for activity
-            // This is a simplified view since client names aren't aggregated in daily data
+            // For daily data, we'll show average transaction counts per day
+            // This shows the daily breakdown which is already in the right format
             const ctx = document.getElementById('chart-kiosk-activity').getContext('2d');
 
             if (chartInstances.clientActivityChart) {
@@ -2139,7 +2226,7 @@
                 data: {
                     labels: labels.slice(-10),  // Show last 10 days
                     datasets: [{
-                        label: 'Transaction Count',
+                        label: 'Daily Transaction Count',
                         data: data.slice(-10),
                         backgroundColor: '#2196f3',
                         borderColor: '#1976d2',
